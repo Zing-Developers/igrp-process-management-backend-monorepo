@@ -706,7 +706,7 @@ public class ActivitiProcessManagerAdapter implements ProcessManagerAdapter {
 			}
 		}
 
-		// 3. Fetch historic variables per-process (Activiti 8.x has no batch API for historic vars)
+		// 3. Fetch historic variables per-process (Activiti 9.x has no safe batch API for historic vars by process instance)
 		for (String id : uniqueIds) {
 			if (runtimeIds.contains(id)) continue;
 			try {
