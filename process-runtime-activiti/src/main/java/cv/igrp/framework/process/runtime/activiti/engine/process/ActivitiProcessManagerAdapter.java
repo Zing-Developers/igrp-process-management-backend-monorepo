@@ -24,6 +24,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static java.util.Optional.*;
@@ -676,6 +677,50 @@ public class ActivitiProcessManagerAdapter implements ProcessManagerAdapter {
 						v.getValue()
 				))
 				.toList();
+	}
+
+	@Override
+	public Map<String, List<ProcessVariableInstance>> getProcessVariablesBatch(Collection<String> processInstanceIds) {
+		if (processInstanceIds == null || processInstanceIds.isEmpty()) {
+			return Map.of();
+		}
+
+		Set<String> uniqueIds = new LinkedHashSet<>(processInstanceIds);
+		Map<String, List<ProcessVariableInstance>> result = new HashMap<>();
+
+		// 1. Batch existence check — determine which processes are still active (runtime)
+		Set<String> runtimeIds = runtimeService.createProcessInstanceQuery()
+				.processInstanceIds(uniqueIds)
+				.list()
+				.stream()
+				.map(org.activiti.engine.runtime.ProcessInstance::getProcessInstanceId)
+				.collect(Collectors.toSet());
+
+		// 2. Fetch runtime variables per-process
+		for (String id : runtimeIds) {
+			try {
+				result.put(id, getRuntimeProcessVariables(id));
+			} catch (Exception e) {
+				LOGGER.warn("Failed to retrieve runtime variables for process {}: {}", id, e.getMessage());
+				result.put(id, List.of());
+			}
+		}
+
+		// 3. Fetch historic variables per-process (Activiti 8.x has no batch API for historic vars)
+		for (String id : uniqueIds) {
+			if (runtimeIds.contains(id)) continue;
+			try {
+				result.put(id, getHistoricProcessVariables(id));
+			} catch (Exception e) {
+				LOGGER.warn("Failed to retrieve historic variables for process {}: {}", id, e.getMessage());
+				result.put(id, List.of());
+			}
+		}
+
+		LOGGER.info("Batch fetched variables for {} processes ({} runtime, {} historic)",
+				uniqueIds.size(), runtimeIds.size(), uniqueIds.size() - runtimeIds.size());
+
+		return result;
 	}
 
 	@Override

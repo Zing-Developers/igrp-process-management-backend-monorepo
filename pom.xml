@@ -13,13 +13,14 @@
 
     <groupId>cv.igrp.framework</groupId>
     <artifactId>igrp-process-management-backend</artifactId>
-    <version>0.1.0-beta.21</version>
+    <version>0.1.0-beta.24.1</version>
     <packaging>pom</packaging>
 
     <name>IGRP Process Manager Backend</name>
     <description>IGRP Process Management Backend — Runtime engine for BPMN process execution</description>
 
     <modules>
+        <module>process-runtime-bom</module>
         <module>process-runtime-core</module>
         <module>process-runtime-activiti</module>
         <module>process-runtime-auth-core</module>

@@ -4,6 +4,8 @@ import cv.igrp.framework.process.runtime.core.engine.process.model.ProcessFilter
 import cv.igrp.framework.process.runtime.core.engine.process.model.ProcessInstance;
 import cv.igrp.framework.process.runtime.core.engine.process.model.ProcessVariableInstance;
 
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -33,6 +35,21 @@ public interface ProcessManagerAdapter {
     void setProcessVariables(String processInstanceId, Map<String, Object> variables);
 
     List<ProcessVariableInstance> getProcessVariables(String processInstanceId);
+
+    /**
+     * Retrieves process variables for multiple process instances in a single operation.
+     * Default implementation falls back to individual calls per process instance.
+     *
+     * @param processInstanceIds the unique identifiers of the process instances
+     * @return a map of processInstanceId to its list of variable instances
+     */
+    default Map<String, List<ProcessVariableInstance>> getProcessVariablesBatch(Collection<String> processInstanceIds) {
+        Map<String, List<ProcessVariableInstance>> result = new HashMap<>();
+        for (String id : processInstanceIds) {
+            result.put(id, getProcessVariables(id));
+        }
+        return result;
+    }
 
 	List<ProcessVariableInstance> getRuntimeProcessVariables(String processInstanceId);
 
