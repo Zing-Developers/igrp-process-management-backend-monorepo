@@ -9,18 +9,15 @@
         <version>0.1.0-beta.24.4</version>
     </parent>
 
-    <artifactId>process-runtime-auth-igrp</artifactId>
+    <artifactId>process-runtime-irn-integration</artifactId>
 
     <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <dependencies>
-
-        <dependency>
-            <groupId>cv.igrp.framework</groupId>
-            <artifactId>process-runtime-auth-core</artifactId>
-        </dependency>
 
         <dependency>
             <groupId>jakarta.servlet</groupId>
@@ -44,16 +41,43 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Spring Web for RestClient -->
         <dependency>
-            <groupId>cv.igrp.platform.access</groupId>
-            <artifactId>client</artifactId>
-            <version>0.1.0-beta-20260127.094449-21</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
         <!-- Spring Cache abstraction -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+
+        <!-- JWT and Cryptography -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>0.12.6</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>0.12.6</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>0.12.6</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>1.84</version>
         </dependency>
 
     </dependencies>

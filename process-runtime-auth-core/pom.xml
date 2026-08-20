@@ -7,7 +7,7 @@
     <parent>
         <groupId>cv.igrp.framework</groupId>
         <artifactId>igrp-process-management-backend</artifactId>
-        <version>0.1.0-beta.24.1</version>
+        <version>0.1.0-beta.24.4</version>
     </parent>
 
     <artifactId>process-runtime-auth-core</artifactId>
@@ -33,6 +33,13 @@
         <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-context</artifactId>
+        </dependency>
+
+        <!-- HttpMethod, used by RouteAuthorizationRule -->
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-web</artifactId>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
