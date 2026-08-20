@@ -6,6 +6,7 @@ import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.exception.
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
@@ -13,6 +14,10 @@ import org.springframework.web.client.RestClient;
  * Client for interacting with the IRN authentication API.
  */
 @Service
+@ConditionalOnProperty(
+		name = "igrp.authorization.service.adapter",
+		havingValue = "irn"
+)
 public class IrnAuthClient {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(IrnAuthClient.class);

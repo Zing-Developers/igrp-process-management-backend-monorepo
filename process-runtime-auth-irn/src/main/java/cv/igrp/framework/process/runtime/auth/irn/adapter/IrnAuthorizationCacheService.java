@@ -1,116 +1,120 @@
 package cv.igrp.framework.process.runtime.auth.irn.adapter;
 
-import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.IrnAuthClient;
+import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.config.IrnApiProperties;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.data.IrnMeResponse;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.data.UserSpace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.Cacheable;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Internal service for cached IRN authorization operations.
- * Separated from the main adapter to ensure proper Spring AOP proxy behavior for caching.
+ * Derives groups, permissions and super-admin status from the IRN {@code /Auth/me} response.
+ *
+ * <p>The response itself is cached per session by {@link IrnMeCache}, so all three lookups within a
+ * request share a single call to IRN.
  */
 @Service
+@ConditionalOnProperty(
+		name = "igrp.authorization.service.adapter",
+		havingValue = "irn"
+)
 public class IrnAuthorizationCacheService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(IrnAuthorizationCacheService.class);
 
-    private final IrnAuthClient client;
+    private final IrnMeCache meCache;
     private final String superAdminEmail;
 
-    public IrnAuthorizationCacheService(IrnAuthClient client, cv.igrp.framework.process.runtime.auth.irn.adapter.integration.config.IrnApiProperties properties) {
-        this.client = client;
+    public IrnAuthorizationCacheService(IrnMeCache meCache, IrnApiProperties properties) {
+        this.meCache = meCache;
         this.superAdminEmail = properties.superAdminEmail();
     }
 
-    @Cacheable(value = "groupsCache", key = "#sessionId", unless = "#result.isEmpty()")
+    /**
+     * Returns the current user's profile code plus the identifiers of the selected space, which are
+     * mapped to Spring authorities as both roles and Activiti candidate groups.
+     *
+     * @param sessionId the IRN session id
+     * @return the group identifiers, or an empty set when the user cannot be resolved
+     */
     public Set<String> getGroups(String sessionId) {
-        try {
-            LOGGER.debug("Getting roles for current user with sessionId: {}", sessionId);
 
-            if (sessionId == null || sessionId.isBlank()) {
-                LOGGER.warn("getRoles: Session ID is null or empty");
-                return Set.of();
-            }
+        final var response = me(sessionId);
 
-            var irnMeResponse = client.getMe(sessionId);
-            Set<String> roles = extractAllProfiles(irnMeResponse);
-
-            LOGGER.debug("Current User Roles: {}", roles);
-
-            Set<String> groups = new HashSet<>(roles);
-
-            Set<String> departments = new HashSet<>(extractSelectedSpaceData(irnMeResponse));
-
-            LOGGER.debug("Departments: {}", departments);
-
-            groups.addAll(departments);
-
-            return groups;
-
-        } catch (Exception e) {
-            LOGGER.error("Error getting roles for current user", e);
+        if (response == null) {
             return Set.of();
         }
+
+        final Set<String> groups = new HashSet<>(extractAllProfiles(response));
+        groups.addAll(extractSelectedSpaceData(response));
+
+        LOGGER.debug("Current user groups: {}", groups);
+
+        return groups;
     }
 
-    @Cacheable(value = "permissionsCache", key = "#sessionId", unless = "#result.isEmpty()")
+    /**
+     * Returns the current user's IRN permissions, in {@code MODULE:action} form, which become Spring
+     * authorities verbatim.
+     *
+     * @param sessionId the IRN session id
+     * @return the permissions, or an empty set when the user cannot be resolved
+     */
     public Set<String> getPermissions(String sessionId) {
-        try {
-            LOGGER.debug("Getting permissions for current user with sessionId: {}", sessionId);
 
-            // Note: Permissions are not currently enabled in IRN implementation.
-            // To enable permissions management, uncomment the code below:
-            //
-            // if (sessionId != null && !sessionId.isBlank()) {
-            //     var irnMeResponse = client.getMe(sessionId);
-            //     Set<String> permissions = new HashSet<>(irnMeResponse.permissions());
-            //     LOGGER.debug("Permissions: {}", permissions);
-            //     return permissions;
-            // }
+        final var response = me(sessionId);
 
-            LOGGER.debug("getPermissions: Permissions not enabled, returning empty set.");
-            return Set.of();
-
-        } catch (Exception e) {
-            LOGGER.error("Error getting permissions for current user", e);
+        if (response == null || response.permissions() == null) {
             return Set.of();
         }
+
+        final Set<String> permissions = new HashSet<>(response.permissions());
+
+        LOGGER.debug("Current user permissions: {}", permissions);
+
+        return permissions;
     }
 
-    @Cacheable(value = "superAdminCache", key = "#sessionId")
+    /**
+     * Whether the current user is the configured super admin.
+     *
+     * @param sessionId the IRN session id
+     * @return {@code true} when the user's email matches {@code irn.api.super-admin-email}
+     */
     public boolean isSuperAdmin(String sessionId) {
-        try {
-            LOGGER.debug("Checking if current user is super admin with sessionId: {}", sessionId);
 
-            if (sessionId == null || sessionId.isBlank()) {
-                LOGGER.warn("isSuperAdmin: Session ID is null or empty");
-                return false;
-            }
+        final var response = me(sessionId);
 
-            var irnMeResponse = client.getMe(sessionId);
-
-            if (irnMeResponse == null || irnMeResponse.email() == null) {
-                LOGGER.warn("isSuperAdmin: Invalid response or null email from IRN API");
-                return false;
-            }
-
-            var isSuperAdmin = irnMeResponse.email().equals(superAdminEmail);
-
-            LOGGER.debug("Is User SuperAdmin: {}", isSuperAdmin);
-
-            return isSuperAdmin;
-
-        } catch (Exception e) {
-            LOGGER.error("Error checking if current user is super admin", e);
+        if (response == null || response.email() == null) {
             return false;
         }
+
+        final var isSuperAdmin = response.email().equals(superAdminEmail);
+
+        LOGGER.debug("Is current user super admin: {}", isSuperAdmin);
+
+        return isSuperAdmin;
+    }
+
+    /**
+     * Guards the cached lookup: the {@code @Cacheable} interceptor on {@link IrnMeCache#me} runs
+     * before the method body and rejects a null key, so a request without the session cookie must be
+     * short-circuited here.
+     */
+    private IrnMeResponse me(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            LOGGER.warn("No IRN session id on the request; cannot resolve the current user");
+            return null;
+        }
+        return meCache.me(sessionId);
     }
 
     /**
