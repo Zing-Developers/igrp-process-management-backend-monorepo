@@ -7,13 +7,13 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.3</version>
+        <version>3.5.14</version>
         <relativePath/>
     </parent>
 
     <groupId>cv.igrp.framework</groupId>
     <artifactId>igrp-process-management-backend</artifactId>
-    <version>0.1.0-beta.24.1</version>
+    <version>0.1.0-beta.24.4</version>
     <packaging>pom</packaging>
 
     <name>IGRP Process Manager Backend</name>
@@ -51,12 +51,6 @@
                 <groupId>cv.igrp.framework</groupId>
                 <artifactId>process-runtime-activiti</artifactId>
                 <version>${project.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-starter-test</artifactId>
-                <scope>test</scope>
             </dependency>
 
             <dependency>

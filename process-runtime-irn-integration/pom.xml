@@ -6,7 +6,7 @@
     <parent>
         <groupId>cv.igrp.framework</groupId>
         <artifactId>igrp-process-management-backend</artifactId>
-        <version>0.1.0-beta.24.1</version>
+        <version>0.1.0-beta.24.4</version>
     </parent>
 
     <artifactId>process-runtime-irn-integration</artifactId>
@@ -77,7 +77,7 @@
         <dependency>
             <groupId>org.bouncycastle</groupId>
             <artifactId>bcprov-jdk18on</artifactId>
-            <version>1.79</version>
+            <version>1.84</version>
         </dependency>
 
     </dependencies>
