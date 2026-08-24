@@ -82,6 +82,36 @@ export IRN_API_SUPER_ADMIN_EMAIL=admin@irn.gov.cv
 export IRN_API_SESSION_COOKIE_NAME=session_id
 ```
 
+### Route Authorization (process-runtime-auth-irn)
+
+These properties, under `irn.authorization.routes.*`, map HTTP routes to IRN permissions of the form `MODULE:action`. Permissions are derived from the HTTP method (`GET`→`visualizar`, `POST`→`criar`, `PUT`/`PATCH`→`editar`, `DELETE`→`eliminar`). Routes that break that rule — a `POST` search that only reads, a deploy needing its own `publicar` — are declared as overrides. Only active when `igrp.authorization.service.adapter=irn`.
+
+| Property | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `irn.authorization.routes.deny-unmatched` | Deny requests matching no rule | ❌ No | `true` |
+| `irn.authorization.routes.modules[N].code` | IRN module code, e.g. `PROCESS_DEFINITIONS` | ✅ Yes | - |
+| `irn.authorization.routes.modules[N].pattern` | Base path of the module's routes, e.g. `/process-definitions` | ✅ Yes | - |
+| `irn.authorization.routes.modules[N].overrides[M].method` | HTTP method of the override route | ❌ No | - |
+| `irn.authorization.routes.modules[N].overrides[M].path` | Path suffix appended to the module pattern, e.g. `/deploy` | ❌ No | - |
+| `irn.authorization.routes.modules[N].overrides[M].action` | IRN action required instead of the method-derived one, e.g. `publicar` | ❌ No | - |
+| `irn.authorization.routes.modules[N].accept-also.<action>` | Extra IRN permissions the module also accepts for that action, comma-separated (any-of, alongside the derived `code:action`). **New in 0.1.0-beta.24.5.** | ❌ No | - |
+
+Modules are matched in declaration order, so a module whose pattern is a prefix of another must be declared after it.
+
+**`accept-also` (0.1.0-beta.24.5):** The same endpoints are often fronted by several IRN modules — e.g. the tasks screens `FILA_TRABALHO`, `TASK_MANAGEMENT`, `MY_TASKS`, `AVAILABLE_TASKS` — each with its own code and verbs, and the backend cannot tell them apart. `accept-also.<action>` lets a module *also* accept those real IRN permissions, any-of, alongside the derived `code:action`. It is keyed by the derived action (`visualizar`/`criar`/`editar`/`eliminar`, or a custom override action), so overrides inherit the list of their action. Absent or empty, behaviour is identical to pre-24.5 — fully backward compatible.
+
+**Example application.properties:**
+```properties
+irn.authorization.routes.modules[4].code=TASK_INSTANCES
+irn.authorization.routes.modules[4].pattern=/tasks-instances
+irn.authorization.routes.modules[4].overrides[0].method=POST
+irn.authorization.routes.modules[4].overrides[0].path=/search
+irn.authorization.routes.modules[4].overrides[0].action=visualizar
+irn.authorization.routes.modules[4].accept-also.visualizar=FILA_TRABALHO:visualizar,TASK_MANAGEMENT:ver,MY_TASKS:visualizar,AVAILABLE_TASKS:visualizar
+```
+
+The `POST /tasks-instances/search` override inherits the `visualizar` accept-also list, because the map is keyed by action.
+
 ### JWT Token Configuration (process-runtime-irn-integration)
 
 These properties configure JWT token generation and signing for secure API communication.
@@ -269,7 +299,11 @@ User authentication results are cached to reduce API calls:
 - **Cache Key**: Based on session ID
 - **Auto-Eviction**: Tokens are refreshed before expiration
 
-### 3. RestClient with JWT Interceptor
+### 3. Hybrid Multi-Frontend Authorization
+
+Route rules derive IRN permissions from the HTTP method, with per-route overrides; `accept-also` (0.1.0-beta.24.5) lets one endpoint accept the permissions of several IRN frontend modules that front it, any-of.
+
+### 4. RestClient with JWT Interceptor
 
 Automatic JWT token injection in all RestClient requests:
 
