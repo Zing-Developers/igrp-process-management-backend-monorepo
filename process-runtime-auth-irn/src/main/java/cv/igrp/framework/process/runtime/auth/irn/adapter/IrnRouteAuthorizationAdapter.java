@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -95,7 +96,7 @@ public class IrnRouteAuthorizationAdapter implements IRouteAuthorizationAdapter 
 			rules.add(new RouteAuthorizationRule(
 					override.method(),
 					basePath(module) + normalizeSuffix(override.path()),
-					Set.of(authority(module.code(), override.action()))
+					authoritiesFor(module, override.action())
 			));
 		}
 
@@ -112,12 +113,34 @@ public class IrnRouteAuthorizationAdapter implements IRouteAuthorizationAdapter 
 		final List<RouteAuthorizationRule> rules = new ArrayList<>(ACTION_BY_METHOD.size() * 2);
 
 		for (var entry : ACTION_BY_METHOD.entrySet()) {
-			final var authorities = Set.of(authority(module.code(), entry.getValue()));
+			final var authorities = authoritiesFor(module, entry.getValue());
 			rules.add(new RouteAuthorizationRule(entry.getKey(), base, authorities));
 			rules.add(new RouteAuthorizationRule(entry.getKey(), base + "/**", authorities));
 		}
 
 		return rules;
+	}
+
+	/**
+	 * The authorities that grant a route: the module's derived {@code code:action}, plus any real IRN
+	 * permissions declared under {@code accept-also} for that action (the several frontend modules that
+	 * front the same endpoints). Any one of them passes.
+	 */
+	private static Set<String> authoritiesFor(IrnRouteProperties.ModuleRoutes module, String action) {
+		final var authorities = new LinkedHashSet<String>();
+		authorities.add(authority(module.code(), action));
+
+		final var acceptAlso = module.acceptAlso();
+		if (acceptAlso != null) {
+			final var extra = acceptAlso.get(action);
+			if (extra != null) {
+				extra.stream()
+						.filter(p -> p != null && !p.isBlank())
+						.map(String::trim)
+						.forEach(authorities::add);
+			}
+		}
+		return Set.copyOf(authorities);
 	}
 
 	private static String basePath(IrnRouteProperties.ModuleRoutes module) {
