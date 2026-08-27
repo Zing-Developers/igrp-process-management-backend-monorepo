@@ -303,7 +303,26 @@ User authentication results are cached to reduce API calls:
 
 Route rules derive IRN permissions from the HTTP method, with per-route overrides; `accept-also` (0.1.0-beta.24.5) lets one endpoint accept the permissions of several IRN frontend modules that front it, any-of.
 
-### 4. RestClient with JWT Interceptor
+### 4. Machine-to-Machine API Keys (process-runtime-auth-core, 0.1.0-beta.24.6)
+
+External backends without an IRN session authenticate with an opaque API key
+(`Authorization: Bearer igrpm2m_<32B base64url>`) instead of the JWT+session path. Lives in
+**`process-runtime-auth-core`** (no IRN dependency — works with any `igrp.authorization.service.adapter`):
+
+- **SPI `M2mKeyResolver`** — `Optional<M2mKey> resolve(String rawKey)`; the application implements it
+  over its credential store (HMAC-SHA-256 + pepper at rest). A no-op default is auto-configured
+  (`@ConditionalOnMissingBean`), so apps without a store simply reject every key.
+- **`M2mOpaqueTokenIntrospector`** — adapts the SPI to the resource server's `OpaqueTokenIntrospector`.
+  Principal is `m2m:<clientName>`; authorities are the key's `MODULE:action` permissions (format-checked,
+  `ROLE_*`/`GROUP_*` dropped) plus caller-supplied base authorities. Fails closed on store errors.
+- **`M2mAuthenticationManagers.m2mAware(jwtManager, introspector)`** — per-request
+  `AuthenticationManagerResolver` routing by bearer prefix; the app wires it with
+  `oauth2ResourceServer(o -> o.authenticationManagerResolver(...))`. No custom filter, standard 401s.
+
+No framework configuration properties — the credential store, its table and the `/m2m-keys` management
+endpoints are application-side (see `docs/SPEC_M2M_AUTHORIZATION.md` in the management API repo).
+
+### 5. RestClient with JWT Interceptor
 
 Automatic JWT token injection in all RestClient requests:
 
