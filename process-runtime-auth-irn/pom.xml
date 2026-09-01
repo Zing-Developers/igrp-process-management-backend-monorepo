@@ -6,7 +6,7 @@
     <parent>
         <groupId>cv.igrp.framework</groupId>
         <artifactId>igrp-process-management-backend</artifactId>
-        <version>0.1.0-beta.24.6</version>
+        <version>0.1.0-beta.24.7</version>
     </parent>
 
     <artifactId>process-runtime-auth-irn</artifactId>
