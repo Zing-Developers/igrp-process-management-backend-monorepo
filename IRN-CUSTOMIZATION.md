@@ -47,7 +47,7 @@ These properties configure the IRN API connection for authentication.
 |----------|-------------|----------|---------|---------------------|
 | `igrp.authorization.service.adapter` | Authorization service adapter type | ✅ Yes | - | `IGRP_AUTHORIZATION_SERVICE_ADAPTER` |
 | `irn.api.base-url` | Base URL of the IRN API | ✅ Yes | - | `IRN_API_BASE_URL` |
-| `irn.api.super-admin-email` | Email of the super admin user | ✅ Yes | - | `IRN_API_SUPER_ADMIN_EMAIL` |
+| `irn.api.super-admin-email` | Email of the super admin user (trimmed, case-insensitive; matched against the JWT `email` claim first, then the IRN `/Auth/me` email) | ✅ Yes | - | `IRN_API_SUPER_ADMIN_EMAIL` |
 | `irn.api.session-cookie-name` | Name of the session cookie | ❌ No | `session_id` | `IRN_API_SESSION_COOKIE_NAME` |
 
 > **Important:** Set `igrp.authorization.service.adapter=irn` to enable the IRN authorization adapter. This is required for the IRN authentication module to be activated.

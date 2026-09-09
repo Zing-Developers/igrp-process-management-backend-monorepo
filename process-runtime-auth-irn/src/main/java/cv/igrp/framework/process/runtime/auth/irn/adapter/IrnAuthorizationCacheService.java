@@ -1,5 +1,6 @@
 package cv.igrp.framework.process.runtime.auth.irn.adapter;
 
+import cv.igrp.framework.process.runtime.auth.core.adapter.SuperAdminEmail;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.config.IrnApiProperties;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.data.IrnMeResponse;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.data.UserSpace;
@@ -31,11 +32,11 @@ public class IrnAuthorizationCacheService {
     private static final Logger LOGGER = LoggerFactory.getLogger(IrnAuthorizationCacheService.class);
 
     private final IrnMeCache meCache;
-    private final String superAdminEmail;
+    private final SuperAdminEmail superAdminEmail;
 
     public IrnAuthorizationCacheService(IrnMeCache meCache, IrnApiProperties properties) {
         this.meCache = meCache;
-        this.superAdminEmail = properties.superAdminEmail();
+        this.superAdminEmail = new SuperAdminEmail(properties.superAdminEmail());
     }
 
     /**
@@ -88,6 +89,7 @@ public class IrnAuthorizationCacheService {
      *
      * @param sessionId the IRN session id
      * @return {@code true} when the user's email matches {@code irn.api.super-admin-email}
+     *         (trimmed, case-insensitive)
      */
     public boolean isSuperAdmin(String sessionId) {
 
@@ -97,7 +99,7 @@ public class IrnAuthorizationCacheService {
             return false;
         }
 
-        final var isSuperAdmin = response.email().equals(superAdminEmail);
+        final var isSuperAdmin = superAdminEmail.matches(response.email());
 
         LOGGER.debug("Is current user super admin: {}", isSuperAdmin);
 
@@ -107,11 +109,12 @@ public class IrnAuthorizationCacheService {
     /**
      * Guards the cached lookup: the {@code @Cacheable} interceptor on {@link IrnMeCache#me} runs
      * before the method body and rejects a null key, so a request without the session cookie must be
-     * short-circuited here.
+     * short-circuited here. A missing cookie is a normal case (a super admin authenticated by JWT
+     * alone, or any caller outside the IRN frontend), so it is logged at debug, not warn.
      */
     private IrnMeResponse me(String sessionId) {
         if (sessionId == null || sessionId.isBlank()) {
-            LOGGER.warn("No IRN session id on the request; cannot resolve the current user");
+            LOGGER.debug("No IRN session id on the request; cannot resolve the current user");
             return null;
         }
         return meCache.me(sessionId);

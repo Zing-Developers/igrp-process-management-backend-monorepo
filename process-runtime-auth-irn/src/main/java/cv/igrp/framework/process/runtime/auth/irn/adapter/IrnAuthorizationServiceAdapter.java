@@ -1,9 +1,12 @@
 package cv.igrp.framework.process.runtime.auth.irn.adapter;
 
 import cv.igrp.framework.process.runtime.auth.core.adapter.IAuthorizationServiceAdapter;
+import cv.igrp.framework.process.runtime.auth.core.adapter.SuperAdminEmail;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.config.IrnApiProperties;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -21,11 +24,15 @@ import java.util.*;
 )
 public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdapter {
 
+	private static final Logger LOGGER = LoggerFactory.getLogger(IrnAuthorizationServiceAdapter.class);
+
 	private final IrnAuthorizationCacheService cacheService;
+	private final SuperAdminEmail superAdminEmail;
 	private final String sessionCookieName;
 
 	public IrnAuthorizationServiceAdapter(IrnAuthorizationCacheService cacheService, IrnApiProperties properties) {
 		this.cacheService = cacheService;
+		this.superAdminEmail = new SuperAdminEmail(properties.superAdminEmail());
 		this.sessionCookieName = properties.sessionCookieName();
 	}
 
@@ -47,11 +54,10 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 
 	/**
 	 * Retrieves permissions for the current user from the IRN API.
-	 * Note: Permissions are currently disabled in this implementation and will always return an empty set.
 	 *
 	 * @param jwt the JWT token (not currently used in IRN implementation)
 	 * @param request the HTTP request containing the session ID cookie
-	 * @return empty set (permissions not currently enabled)
+	 * @return the user's IRN permissions, or empty set if they cannot be retrieved
 	 */
 	@Override
 	public Set<String> getPermissions(String jwt, HttpServletRequest request) {
@@ -60,15 +66,24 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	}
 
 	/**
-	 * Checks if the current user is a super admin.
-	 * Super admin status is determined by comparing the user's email with the configured super admin email.
+	 * Checks if the current user is the configured super admin ({@code irn.api.super-admin-email}).
 	 *
-	 * @param jwt the JWT token (not currently used in IRN implementation)
-	 * @param request the HTTP request containing the session ID cookie
+	 * <p>The JWT is checked first: when its {@code email} claim matches, the user is super admin
+	 * without any IRN session — the token was already validated by the resource server, and the
+	 * super-admin role alone satisfies every route rule. Only when the claim does not match does the
+	 * lookup fall through to the IRN {@code /Auth/me} response keyed by the session cookie, so an IRN
+	 * user whose IdP email differs from the IRN one keeps working as before.
+	 *
+	 * @param jwt the JWT token, whose {@code email} claim is compared with the configured email
+	 * @param request the HTTP request containing the session ID cookie (fallback)
 	 * @return true if the user is a super admin, false otherwise
 	 */
 	@Override
 	public boolean isSuperAdmin(String jwt, HttpServletRequest request) {
+		if (superAdminEmail.matchesJwt(jwt)) {
+			LOGGER.debug("Super admin granted from the JWT email claim; IRN session not consulted");
+			return true;
+		}
 		String sessionId = extractSessionId(request);
 		return cacheService.isSuperAdmin(sessionId);
 	}
@@ -93,7 +108,7 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	 * @return the session ID, or null if not found
 	 */
 	private String extractSessionId(HttpServletRequest request) {
-		if (request.getCookies() == null) return null;
+		if (request == null || request.getCookies() == null) return null;
 
 		return Arrays.stream(request.getCookies())
 				.filter(c -> sessionCookieName.equals(c.getName()))
