@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -68,24 +69,39 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	/**
 	 * Checks if the current user is the configured super admin ({@code irn.api.super-admin-email}).
 	 *
-	 * <p>The JWT is checked first: when its {@code email} claim matches, the user is super admin
-	 * without any IRN session — the token was already validated by the resource server, and the
-	 * super-admin role alone satisfies every route rule. Only when the claim does not match does the
-	 * lookup fall through to the IRN {@code /Auth/me} response keyed by the session cookie, so an IRN
-	 * user whose IdP email differs from the IRN one keeps working as before.
+	 * <p>When the request carries an IRN session cookie, the IRN {@code /Auth/me} email decides, as it
+	 * always did: IRN stays the authority for users it knows, and revoking them there still removes the
+	 * role within the cache TTL. Only a request with no session cookie (a super admin calling with a
+	 * bare token) falls back to the {@code email} claim of the validated JWT.
 	 *
-	 * @param jwt the JWT token, whose {@code email} claim is compared with the configured email
-	 * @param request the HTTP request containing the session ID cookie (fallback)
+	 * @param jwt the token as decoded and validated by the resource server
+	 * @param request the HTTP request that may carry the session ID cookie
 	 * @return true if the user is a super admin, false otherwise
 	 */
 	@Override
-	public boolean isSuperAdmin(String jwt, HttpServletRequest request) {
-		if (superAdminEmail.matchesJwt(jwt)) {
-			LOGGER.debug("Super admin granted from the JWT email claim; IRN session not consulted");
-			return true;
-		}
+	public boolean isSuperAdmin(Jwt jwt, HttpServletRequest request) {
 		String sessionId = extractSessionId(request);
-		return cacheService.isSuperAdmin(sessionId);
+		if (sessionId != null && !sessionId.isBlank()) {
+			return cacheService.isSuperAdmin(sessionId);
+		}
+		final var granted = superAdminEmail.matches(jwt.getClaimAsString("email"));
+		if (granted) {
+			LOGGER.debug("Super admin granted from the validated JWT email claim; no IRN session on the request");
+		}
+		return granted;
+	}
+
+	/**
+	 * Raw-token form: session only. The string is never parsed here, so a caller that has not been
+	 * through the resource server cannot obtain the role from a claim.
+	 *
+	 * @param jwt the raw token (unused)
+	 * @param request the HTTP request containing the session ID cookie
+	 * @return true if the IRN session belongs to the super admin, false otherwise
+	 */
+	@Override
+	public boolean isSuperAdmin(String jwt, HttpServletRequest request) {
+		return cacheService.isSuperAdmin(extractSessionId(request));
 	}
 	/**
 	 * Retrieves the active roles for the current user.
@@ -108,7 +124,7 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	 * @return the session ID, or null if not found
 	 */
 	private String extractSessionId(HttpServletRequest request) {
-		if (request == null || request.getCookies() == null) return null;
+		if (request.getCookies() == null) return null;
 
 		return Arrays.stream(request.getCookies())
 				.filter(c -> sessionCookieName.equals(c.getName()))

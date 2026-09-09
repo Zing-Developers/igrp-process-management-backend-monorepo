@@ -1,6 +1,7 @@
 package cv.igrp.framework.process.runtime.auth.core.adapter;
 
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,9 +22,9 @@ public class DefaultAuthorizationServiceAdapter implements IAuthorizationService
 
 	/**
 	 * Optional super-admin escape for the provider-less default mode, mirroring the IRN adapter's
-	 * {@code irn.api.super-admin-email}: when set, a JWT whose {@code email} claim matches (trimmed,
-	 * case-insensitive) is treated as super admin. Empty (the default) keeps today's behaviour —
-	 * nobody is ever super admin.
+	 * {@code irn.api.super-admin-email}: when set, a validated JWT whose {@code email} claim matches
+	 * (trimmed, case-insensitive) is treated as super admin. Empty (the default) keeps the old
+	 * behaviour, nobody is ever super admin.
 	 */
 	private final SuperAdminEmail superAdminEmail;
 
@@ -45,9 +46,15 @@ public class DefaultAuthorizationServiceAdapter implements IAuthorizationService
 		return Set.of();
 	}
 
+	/** Raw tokens are never parsed here: without the decoded {@link Jwt} nobody is super admin. */
 	@Override
 	public boolean isSuperAdmin(String jwt, HttpServletRequest request) {
-		return superAdminEmail.matchesJwt(jwt);
+		return false;
+	}
+
+	@Override
+	public boolean isSuperAdmin(Jwt jwt, HttpServletRequest request) {
+		return superAdminEmail.matches(jwt.getClaimAsString("email"));
 	}
 
 	@Override
