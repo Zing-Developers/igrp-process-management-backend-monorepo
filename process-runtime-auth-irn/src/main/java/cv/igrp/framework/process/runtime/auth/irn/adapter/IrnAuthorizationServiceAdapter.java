@@ -1,10 +1,14 @@
 package cv.igrp.framework.process.runtime.auth.irn.adapter;
 
 import cv.igrp.framework.process.runtime.auth.core.adapter.IAuthorizationServiceAdapter;
+import cv.igrp.framework.process.runtime.auth.core.adapter.SuperAdminEmail;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.config.IrnApiProperties;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -21,11 +25,15 @@ import java.util.*;
 )
 public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdapter {
 
+	private static final Logger LOGGER = LoggerFactory.getLogger(IrnAuthorizationServiceAdapter.class);
+
 	private final IrnAuthorizationCacheService cacheService;
+	private final SuperAdminEmail superAdminEmail;
 	private final String sessionCookieName;
 
 	public IrnAuthorizationServiceAdapter(IrnAuthorizationCacheService cacheService, IrnApiProperties properties) {
 		this.cacheService = cacheService;
+		this.superAdminEmail = new SuperAdminEmail(properties.superAdminEmail());
 		this.sessionCookieName = properties.sessionCookieName();
 	}
 
@@ -47,11 +55,10 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 
 	/**
 	 * Retrieves permissions for the current user from the IRN API.
-	 * Note: Permissions are currently disabled in this implementation and will always return an empty set.
 	 *
 	 * @param jwt the JWT token (not currently used in IRN implementation)
 	 * @param request the HTTP request containing the session ID cookie
-	 * @return empty set (permissions not currently enabled)
+	 * @return the user's IRN permissions, or empty set if they cannot be retrieved
 	 */
 	@Override
 	public Set<String> getPermissions(String jwt, HttpServletRequest request) {
@@ -60,17 +67,41 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	}
 
 	/**
-	 * Checks if the current user is a super admin.
-	 * Super admin status is determined by comparing the user's email with the configured super admin email.
+	 * Checks if the current user is the configured super admin ({@code irn.api.super-admin-email}).
 	 *
-	 * @param jwt the JWT token (not currently used in IRN implementation)
-	 * @param request the HTTP request containing the session ID cookie
+	 * <p>When the request carries an IRN session cookie, the IRN {@code /Auth/me} email decides, as it
+	 * always did: IRN stays the authority for users it knows, and revoking them there still removes the
+	 * role within the cache TTL. Only a request with no session cookie (a super admin calling with a
+	 * bare token) falls back to the {@code email} claim of the validated JWT.
+	 *
+	 * @param jwt the token as decoded and validated by the resource server
+	 * @param request the HTTP request that may carry the session ID cookie
 	 * @return true if the user is a super admin, false otherwise
 	 */
 	@Override
-	public boolean isSuperAdmin(String jwt, HttpServletRequest request) {
+	public boolean isSuperAdmin(Jwt jwt, HttpServletRequest request) {
 		String sessionId = extractSessionId(request);
-		return cacheService.isSuperAdmin(sessionId);
+		if (sessionId != null && !sessionId.isBlank()) {
+			return cacheService.isSuperAdmin(sessionId);
+		}
+		final var granted = superAdminEmail.matches(jwt.getClaimAsString("email"));
+		if (granted) {
+			LOGGER.debug("Super admin granted from the validated JWT email claim; no IRN session on the request");
+		}
+		return granted;
+	}
+
+	/**
+	 * Raw-token form: session only. The string is never parsed here, so a caller that has not been
+	 * through the resource server cannot obtain the role from a claim.
+	 *
+	 * @param jwt the raw token (unused)
+	 * @param request the HTTP request containing the session ID cookie
+	 * @return true if the IRN session belongs to the super admin, false otherwise
+	 */
+	@Override
+	public boolean isSuperAdmin(String jwt, HttpServletRequest request) {
+		return cacheService.isSuperAdmin(extractSessionId(request));
 	}
 	/**
 	 * Retrieves the active roles for the current user.

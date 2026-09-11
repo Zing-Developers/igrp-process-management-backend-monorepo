@@ -42,7 +42,7 @@ public class IrnMeCache {
 	public IrnMeResponse me(String sessionId) {
 
 		if (sessionId == null || sessionId.isBlank()) {
-			LOGGER.warn("No IRN session id on the request; cannot resolve the current user");
+			LOGGER.debug("No IRN session id on the request; cannot resolve the current user");
 			return null;
 		}
 

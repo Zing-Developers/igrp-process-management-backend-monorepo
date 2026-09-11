@@ -1,7 +1,7 @@
 package cv.igrp.framework.process.runtime.auth.core.adapter;
 
-import com.nimbusds.jwt.JWTParser;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -22,16 +22,15 @@ public class DefaultAuthorizationServiceAdapter implements IAuthorizationService
 
 	/**
 	 * Optional super-admin escape for the provider-less default mode, mirroring the IRN adapter's
-	 * {@code irn.api.super-admin-email}: when set, a JWT whose {@code email} claim matches (trimmed,
-	 * case-insensitive) is treated as super admin. Empty (the default) keeps today's behaviour —
-	 * nobody is ever super admin. The claim is read from the already-validated token; no signature
-	 * re-check is needed here because the resource server verified it before authorities are built.
+	 * {@code irn.api.super-admin-email}: when set, a validated JWT whose {@code email} claim matches
+	 * (trimmed, case-insensitive) is treated as super admin. Empty (the default) keeps the old
+	 * behaviour, nobody is ever super admin.
 	 */
-	private final String superAdminEmail;
+	private final SuperAdminEmail superAdminEmail;
 
 	public DefaultAuthorizationServiceAdapter(
 			@Value("${igrp.authorization.default.super-admin-email:}") String superAdminEmail) {
-		this.superAdminEmail = superAdminEmail == null ? "" : superAdminEmail.trim();
+		this.superAdminEmail = new SuperAdminEmail(superAdminEmail);
 	}
 
 
@@ -47,19 +46,15 @@ public class DefaultAuthorizationServiceAdapter implements IAuthorizationService
 		return Set.of();
 	}
 
+	/** Raw tokens are never parsed here: without the decoded {@link Jwt} nobody is super admin. */
 	@Override
 	public boolean isSuperAdmin(String jwt, HttpServletRequest request) {
-		if (superAdminEmail.isEmpty()) {
-			return false;
-		}
-		try {
-			final var email = JWTParser.parse(jwt).getJWTClaimsSet().getStringClaim("email");
-			return email != null && superAdminEmail.equalsIgnoreCase(email.trim());
-		} catch (Exception e) {
-			// fail closed: an unparsable token never grants privileges
-			log.debug("Could not read email claim for super-admin check: {}", e.getMessage());
-			return false;
-		}
+		return false;
+	}
+
+	@Override
+	public boolean isSuperAdmin(Jwt jwt, HttpServletRequest request) {
+		return superAdminEmail.matches(jwt.getClaimAsString("email"));
 	}
 
 	@Override
