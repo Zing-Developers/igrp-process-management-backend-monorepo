@@ -1,5 +1,6 @@
 package cv.igrp.framework.process.runtime.auth.core.adapter;
 
+import cv.igrp.framework.process.runtime.auth.core.access.EmailAccessResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.slf4j.Logger;
@@ -27,10 +28,13 @@ public class DefaultAuthorizationServiceAdapter implements IAuthorizationService
 	 * behaviour, nobody is ever super admin.
 	 */
 	private final SuperAdminEmail superAdminEmail;
+	private final EmailAccessResolver emailAccess;
 
 	public DefaultAuthorizationServiceAdapter(
-			@Value("${igrp.authorization.default.super-admin-email:}") String superAdminEmail) {
+			@Value("${igrp.authorization.default.super-admin-email:}") String superAdminEmail,
+			EmailAccessResolver emailAccess) {
 		this.superAdminEmail = new SuperAdminEmail(superAdminEmail);
+		this.emailAccess = emailAccess;
 	}
 
 
@@ -44,6 +48,15 @@ public class DefaultAuthorizationServiceAdapter implements IAuthorizationService
 	public Set<String> getPermissions(String jwt, HttpServletRequest request) {
 		log.debug("Fetching permissions for user: {}", jwt);
 		return Set.of();
+	}
+
+	/**
+	 * There is no session in the default mode, so the validated token's {@code email} claim is the only
+	 * identity: whatever the application mapped to it (format-checked) is granted.
+	 */
+	@Override
+	public Set<String> getPermissions(Jwt jwt, HttpServletRequest request) {
+		return EmailAccess.permissionsFor(emailAccess, jwt);
 	}
 
 	/** Raw tokens are never parsed here: without the decoded {@link Jwt} nobody is super admin. */

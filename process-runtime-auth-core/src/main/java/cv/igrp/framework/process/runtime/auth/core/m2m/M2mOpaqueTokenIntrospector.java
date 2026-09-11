@@ -1,5 +1,6 @@
 package cv.igrp.framework.process.runtime.auth.core.m2m;
 
+import cv.igrp.framework.process.runtime.auth.core.adapter.PermissionFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.GrantedAuthority;
@@ -11,10 +12,8 @@ import org.springframework.security.oauth2.server.resource.introspection.OpaqueT
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * Introspects {@code igrpm2m_} API keys against the {@link M2mKeyResolver} SPI.
@@ -35,9 +34,6 @@ import java.util.regex.Pattern;
 public class M2mOpaqueTokenIntrospector implements OpaqueTokenIntrospector {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(M2mOpaqueTokenIntrospector.class);
-
-	/** MODULE:action — uppercase module, lowercase action; roles can never smuggle through. */
-	private static final Pattern PERMISSION_FORMAT = Pattern.compile("^[A-Z0-9_.]+:[a-z_]+$");
 
 	public static final String PRINCIPAL_PREFIX = "m2m:";
 
@@ -66,14 +62,8 @@ public class M2mOpaqueTokenIntrospector implements OpaqueTokenIntrospector {
 		}
 
 		final var authorities = new ArrayList<GrantedAuthority>();
-		final var granted = new LinkedHashSet<String>();
-		for (String permission : key.permissions()) {
-			if (permission != null && PERMISSION_FORMAT.matcher(permission.trim()).matches()) {
-				granted.add(permission.trim());
-			} else {
-				LOGGER.warn("Dropping malformed M2M permission for client [{}]", key.clientName());
-			}
-		}
+		// PermissionFormat is the format gate: MODULE:action only, ROLE_*/GROUP_* dropped
+		final var granted = PermissionFormat.onlyValid(key.permissions());
 		granted.addAll(baseAuthorities);
 		granted.forEach(a -> authorities.add(new SimpleGrantedAuthority(a)));
 

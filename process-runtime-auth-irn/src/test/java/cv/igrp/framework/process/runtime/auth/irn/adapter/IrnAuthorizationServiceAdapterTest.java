@@ -1,10 +1,13 @@
 package cv.igrp.framework.process.runtime.auth.irn.adapter;
 
+import cv.igrp.framework.process.runtime.auth.core.access.EmailAccessResolver;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.config.IrnApiProperties;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.security.oauth2.jwt.Jwt;
+
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -16,7 +19,8 @@ class IrnAuthorizationServiceAdapterTest {
 			new IrnApiProperties("https://irn.test", "Admin@Irn.cv", "session_id");
 
 	private final IrnAuthorizationCacheService cache = mock(IrnAuthorizationCacheService.class);
-	private final IrnAuthorizationServiceAdapter adapter = new IrnAuthorizationServiceAdapter(cache, PROPS);
+	private final EmailAccessResolver mapping = mock(EmailAccessResolver.class);
+	private final IrnAuthorizationServiceAdapter adapter = new IrnAuthorizationServiceAdapter(cache, PROPS, mapping);
 
 	/** A decoded token as the resource server hands it over. */
 	private static Jwt tokenWithEmail(String email) {
@@ -64,9 +68,60 @@ class IrnAuthorizationServiceAdapterTest {
 	@Test
 	void noConfiguredEmailNeverGrantsFromJwt() {
 		var unconfigured = new IrnAuthorizationServiceAdapter(cache,
-				new IrnApiProperties("https://irn.test", "", "session_id"));
+				new IrnApiProperties("https://irn.test", "", "session_id"), mapping);
 		assertThat(unconfigured.isSuperAdmin(tokenWithEmail("admin@irn.cv"), requestWithSession(null))).isFalse();
 		verify(cache, never()).isSuperAdmin(any());
+	}
+
+	// --- permissions: session first, email access mapping only without a session ---
+
+	@Test
+	void withoutSessionCookieTheMappedPermissionsAreGrantedFormatChecked() {
+		when(mapping.resolve("svc@x.cv")).thenReturn(Set.of("TASK_INSTANCES:visualizar", "ROLE_DEPT_IGRP.superadmin", "ROLE_X:y"));
+
+		assertThat(adapter.getPermissions(tokenWithEmail(" Svc@X.cv "), requestWithSession(null)))
+				.containsExactly("TASK_INSTANCES:visualizar");
+		// a blank cookie value counts as no session, like isSuperAdmin
+		assertThat(adapter.getPermissions(tokenWithEmail("svc@x.cv"), requestWithSession("  ")))
+				.containsExactly("TASK_INSTANCES:visualizar");
+		verify(cache, never()).getPermissions(any());
+	}
+
+	@Test
+	void withSessionCookieIrnDecidesAndTheMappingIsNeverConsulted() {
+		when(cache.getPermissions("s1")).thenReturn(Set.of("FILA_TRABALHO:visualizar"));
+		assertThat(adapter.getPermissions(tokenWithEmail("svc@x.cv"), requestWithSession("s1")))
+				.containsExactly("FILA_TRABALHO:visualizar");
+
+		// IRN failure (cache returns empty) stays a denial: no fallback to the mapping
+		when(cache.getPermissions("s1")).thenReturn(Set.of());
+		assertThat(adapter.getPermissions(tokenWithEmail("svc@x.cv"), requestWithSession("s1"))).isEmpty();
+		verify(mapping, never()).resolve(any());
+	}
+
+	@Test
+	void noEmailClaimAndNoCookieGrantsNothingWithoutALookup() {
+		assertThat(adapter.getPermissions(tokenWithEmail(null), requestWithSession(null))).isEmpty();
+		verify(mapping, never()).resolve(any());
+	}
+
+	@Test
+	void mappingNeverGrantsGroupsAndTheRawTokenFormStaysSessionOnly() {
+		when(mapping.resolve("svc@x.cv")).thenReturn(Set.of("TASK_INSTANCES:visualizar"));
+		when(cache.getGroups(null)).thenReturn(Set.of());
+		when(cache.getPermissions(null)).thenReturn(Set.of());
+
+		assertThat(adapter.getActiveGroups("raw", requestWithSession(null))).isEmpty();
+		assertThat(adapter.getPermissions("raw", requestWithSession(null))).isEmpty();
+		verify(mapping, never()).resolve(any());
+	}
+
+	@Test
+	void mappingStoreFailurePropagates() {
+		when(mapping.resolve("svc@x.cv")).thenThrow(new IllegalStateException("db down"));
+		org.assertj.core.api.Assertions.assertThatThrownBy(
+				() -> adapter.getPermissions(tokenWithEmail("svc@x.cv"), requestWithSession(null)))
+				.isInstanceOf(IllegalStateException.class);
 	}
 
 }
