@@ -1,5 +1,7 @@
 package cv.igrp.framework.process.runtime.auth.irn.adapter;
 
+import cv.igrp.framework.process.runtime.auth.core.access.EmailAccessResolver;
+import cv.igrp.framework.process.runtime.auth.core.adapter.EmailAccess;
 import cv.igrp.framework.process.runtime.auth.core.adapter.IAuthorizationServiceAdapter;
 import cv.igrp.framework.process.runtime.auth.core.adapter.SuperAdminEmail;
 import cv.igrp.framework.process.runtime.auth.irn.adapter.integration.config.IrnApiProperties;
@@ -30,13 +32,15 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	private final IrnAuthorizationCacheService cacheService;
 	private final SuperAdminEmail superAdminEmail;
 	private final String sessionCookieName;
+	private final EmailAccessResolver emailAccess;
 
-	public IrnAuthorizationServiceAdapter(IrnAuthorizationCacheService cacheService, IrnApiProperties properties) {
+	public IrnAuthorizationServiceAdapter(IrnAuthorizationCacheService cacheService, IrnApiProperties properties,
+			EmailAccessResolver emailAccess) {
 		this.cacheService = cacheService;
 		this.superAdminEmail = new SuperAdminEmail(properties.superAdminEmail());
 		this.sessionCookieName = properties.sessionCookieName();
+		this.emailAccess = emailAccess;
 	}
-
 
 
 	/**
@@ -64,6 +68,22 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	public Set<String> getPermissions(String jwt, HttpServletRequest request) {
 		String sessionId = extractSessionId(request);
 		return cacheService.getPermissions(sessionId);
+	}
+
+	/**
+	 * Session first, like {@link #isSuperAdmin(Jwt, HttpServletRequest)}: with an IRN session cookie
+	 * {@code /Auth/me} decides, and an IRN failure still yields nothing (never the mapping, which would
+	 * revive users IRN revoked). Only a request with no session (an external system holding a bare
+	 * client-credentials token) is granted what the application mapped to the validated token's
+	 * {@code email} claim, {@code MODULE:action} only.
+	 */
+	@Override
+	public Set<String> getPermissions(Jwt jwt, HttpServletRequest request) {
+		String sessionId = extractSessionId(request);
+		if (sessionId != null && !sessionId.isBlank()) {
+			return cacheService.getPermissions(sessionId);
+		}
+		return EmailAccess.permissionsFor(emailAccess, jwt);
 	}
 
 	/**
