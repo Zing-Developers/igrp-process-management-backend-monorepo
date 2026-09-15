@@ -79,9 +79,8 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	 */
 	@Override
 	public Set<String> getPermissions(Jwt jwt, HttpServletRequest request) {
-		String sessionId = extractSessionId(request);
-		if (sessionId != null && !sessionId.isBlank()) {
-			return cacheService.getPermissions(sessionId);
+		if (hasSession(request)) {
+			return cacheService.getPermissions(extractSessionId(request));
 		}
 		return EmailAccess.permissionsFor(emailAccess, jwt);
 	}
@@ -100,9 +99,8 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	 */
 	@Override
 	public boolean isSuperAdmin(Jwt jwt, HttpServletRequest request) {
-		String sessionId = extractSessionId(request);
-		if (sessionId != null && !sessionId.isBlank()) {
-			return cacheService.isSuperAdmin(sessionId);
+		if (hasSession(request)) {
+			return cacheService.isSuperAdmin(extractSessionId(request));
 		}
 		final var granted = superAdminEmail.matches(jwt.getClaimAsString("email"));
 		if (granted) {
@@ -135,6 +133,18 @@ public class IrnAuthorizationServiceAdapter implements IAuthorizationServiceAdap
 	public Set<String> getActiveGroups(String jwt, HttpServletRequest request) {
 		// Active roles/spaces are the same as regular roles in IRN implementation
 		return getGroups(jwt, request);
+	}
+
+	/**
+	 * The one reading of "this request has an IRN session": the first {@code session_id} cookie, and
+	 * only if it is not blank. The same rule decides the session-first branch in
+	 * {@link #getPermissions(Jwt, HttpServletRequest)} and {@link #isSuperAdmin(Jwt, HttpServletRequest)},
+	 * so an application gate that asks here can never disagree with the adapter about a request.
+	 */
+	@Override
+	public boolean hasSession(HttpServletRequest request) {
+		final var sessionId = extractSessionId(request);
+		return sessionId != null && !sessionId.isBlank();
 	}
 
 	/**

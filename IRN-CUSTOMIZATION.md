@@ -322,29 +322,38 @@ External backends without an IRN session authenticate with an opaque API key
 No framework configuration properties — the credential store, its table and the `/m2m-keys` management
 endpoints are application-side (see `docs/SPEC_M2M_AUTHORIZATION.md` in the management API repo).
 
-### 5. Email Access Mapping (process-runtime-auth-core, 0.1.0-beta.24.9)
+### 5. Email access mapping (process-runtime-auth-core, 0.1.0-beta.24.9, hasSession in 24.10)
 
 The other way for an external backend without an IRN session: it keeps its Keycloak
 client-credentials token, and the application maps the token's `email` claim to `MODULE:action`
 permissions in a table it owns. No secret to distribute or rotate. Lives in
-**`process-runtime-auth-core`** and is consumed by both the `default` and the `irn` adapters.
+`process-runtime-auth-core` and is consumed by both the `default` and the `irn` adapters.
 
-- **SPI `EmailAccessResolver`** — `Set<String> resolve(String email)`; the application implements it
-  over its store. The email arrives trimmed and lower-cased; an empty set means no mapping. A no-op
-  default is auto-configured (`@ConditionalOnMissingBean`), so apps without a store grant nothing.
-- **`IAuthorizationServiceAdapter.getPermissions(Jwt, request)`** — new default overload (24.9),
-  the application's converter must call it (the raw-token form never consults the mapping).
-- **Session first.** The IRN adapter only consults the mapping when the request carries no
-  `session_id` cookie. With a cookie `/Auth/me` decides as before, and an IRN failure still denies:
-  there is no fallback to the mapping, otherwise a user IRN revoked would come back through it.
-- **`PermissionFormat`** — the shared gate (`MODULE:action`, `ROLE_*`/`GROUP_*` dropped) now used by
-  the M2M introspector and by the email path, so neither store can grant a role, a group or super admin.
-- The mapping never grants groups: `getActiveGroups` stays session-only.
+The SPI is `EmailAccessResolver`, one method: `Set<String> resolve(String email)`. The application
+implements it over its store. The email arrives trimmed and lower-cased, and an empty set means no
+mapping. A no-op default is auto-configured with `@ConditionalOnMissingBean`, so an application
+without a store grants nothing.
 
-No framework configuration properties — the table and the `/email-access-mappings` management
-endpoints are application-side (see `docs/SPEC_EMAIL_ACCESS_MAPPING.md` in the management API repo).
-Operational preconditions live there too: the service-account token must carry `email`, and the realm
-must not allow duplicate or self-registered emails.
+`IAuthorizationServiceAdapter.getPermissions(Jwt, request)` is the overload the application's
+converter must call (24.9). The raw-token form never consults the mapping. Session comes first: the
+IRN adapter only consults the mapping when the request carries no `session_id` cookie. With a cookie,
+`/Auth/me` decides as before, and an IRN failure still denies, because a fallback to the mapping would
+revive a user IRN revoked. The mapping never grants groups, so `getActiveGroups` stays session-only.
+
+`PermissionFormat` is the shared gate for the M2M introspector and the email path. It accepts
+`MODULE:action` only and drops `ROLE_*` and `GROUP_*`, so neither store can grant a role, a group or
+super admin.
+
+`IAuthorizationServiceAdapter.hasSession(request)` (24.10) is the one reading of "this request has a
+session": the IRN adapter answers with the first `session_id` cookie when it is not blank, the same
+rule its permission path uses; the default adapter answers `false`. An application route gate that
+must only honour session-backed authorities (the email access console) asks the adapter instead of
+reading cookies itself, so gate and adapter can never disagree about a request.
+
+There are no framework configuration properties. The table and the `/email-access-mappings`
+management endpoints are application-side; see `docs/SPEC_EMAIL_ACCESS_MAPPING.md` in the management
+API repository, which also lists the operational preconditions: the service-account token must carry
+`email`, and the realm must not allow duplicate or self-registered emails.
 
 ### 6. RestClient with JWT Interceptor
 

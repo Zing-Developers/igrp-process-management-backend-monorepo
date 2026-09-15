@@ -57,6 +57,11 @@ class DefaultAuthorizationServiceAdapterTest {
 	}
 
 	@Test
+	void defaultModeHasNoSessionConcept() {
+		assertThat(new DefaultAuthorizationServiceAdapter("", NO_MAPPING).hasSession(null)).isFalse();
+	}
+
+	@Test
 	void noEmailClaimMeansNoLookup() {
 		var resolver = mock(EmailAccessResolver.class);
 		var adapter = new DefaultAuthorizationServiceAdapter("", resolver);
