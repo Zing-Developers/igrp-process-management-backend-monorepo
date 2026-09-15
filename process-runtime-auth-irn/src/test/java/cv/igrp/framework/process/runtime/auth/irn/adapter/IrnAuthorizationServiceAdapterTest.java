@@ -124,4 +124,26 @@ class IrnAuthorizationServiceAdapterTest {
 				.isInstanceOf(IllegalStateException.class);
 	}
 
+	// --- hasSession: the one rule the console gate asks for ---
+
+	@Test
+	void hasSessionIsTheFirstNonBlankSessionCookieRule() {
+		assertThat(adapter.hasSession(requestWithSession(null))).isFalse();
+		assertThat(adapter.hasSession(requestWithSession("  "))).isFalse();
+		assertThat(adapter.hasSession(requestWithSession("s1"))).isTrue();
+
+		// duplicate cookies: the first one decides, exactly as the permission path does
+		var blankFirst = new MockHttpServletRequest();
+		blankFirst.setCookies(new Cookie("session_id", ""), new Cookie("session_id", "bogus"));
+		assertThat(adapter.hasSession(blankFirst)).isFalse();
+		when(mapping.resolve("svc@x.cv")).thenReturn(Set.of("TASK_INSTANCES:visualizar"));
+		assertThat(adapter.getPermissions(tokenWithEmail("svc@x.cv"), blankFirst)).containsExactly("TASK_INSTANCES:visualizar");
+
+		var bogusFirst = new MockHttpServletRequest();
+		bogusFirst.setCookies(new Cookie("session_id", "bogus"), new Cookie("session_id", ""));
+		when(cache.getPermissions("bogus")).thenReturn(Set.of());
+		assertThat(adapter.hasSession(bogusFirst)).isTrue();
+		assertThat(adapter.getPermissions(tokenWithEmail("svc@x.cv"), bogusFirst)).isEmpty();
+	}
+
 }

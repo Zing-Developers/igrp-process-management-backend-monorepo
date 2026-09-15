@@ -37,4 +37,14 @@ public interface IAuthorizationServiceAdapter {
 
 	Set<String> getActiveGroups(String jwt, HttpServletRequest request);
 
+	/**
+	 * Whether the request carries a session the adapter would consult instead of any application store
+	 * (for IRN, a non-blank session cookie). Route gates that must only honour session-backed
+	 * authorities ask the adapter, so there is exactly one reading of "has a session" per deployment.
+	 * Adapters without a session concept answer {@code false}.
+	 */
+	default boolean hasSession(HttpServletRequest request) {
+		return false;
+	}
+
 }

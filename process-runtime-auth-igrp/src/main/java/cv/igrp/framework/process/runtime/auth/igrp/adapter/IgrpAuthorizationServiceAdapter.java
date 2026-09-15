@@ -159,6 +159,24 @@ public class IgrpAuthorizationServiceAdapter
 		}
 	}
 
+	/**
+	 * Converters call the {@link Jwt} forms since 24.8/24.9. The interface defaults would call the String
+	 * forms on {@code this}, a self-invocation that bypasses the cache proxy, so the cached overloads are
+	 * declared here and read the claims of the token the resource server already decoded.
+	 */
+	@Override
+	@Cacheable(value = "authorization-permissions-cache", key = "#jwt.tokenValue", unless = "#result.isEmpty()")
+	public Set<String> getPermissions(Jwt jwt, HttpServletRequest request) {
+		return getStringSetClaim(jwt, Claim.PERMISSIONS);
+	}
+
+	@Override
+	@Cacheable(value = "authorization-super-admin-cache", key = "#jwt.tokenValue")
+	public boolean isSuperAdmin(Jwt jwt, HttpServletRequest request) {
+		Boolean superAdmin = jwt.getClaim(Claim.IS_SUPER_ADMIN.value());
+		return Boolean.TRUE.equals(superAdmin);
+	}
+
 	@Override
 	@Cacheable(value = "authorization-super-admin-cache", key = "#jwt")
 	public boolean isSuperAdmin(
